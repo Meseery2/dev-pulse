@@ -52,12 +52,12 @@ flowchart TB
   end
 
   subgraph Store["Canonical store"]
-    T["commits · PRs · deployments<br/>deployment_commits · incidents · work_items"]
+    T["commits, PRs, deployments<br/>deployment_commits, incidents, work_items"]
   end
 
   subgraph Compute
     M["Metric engine<br/>pure, windowed"]
-    S["metric_snapshots<br/>definition_version · is_seeded"]
+    S["metric_snapshots<br/>definition_version, is_seeded"]
   end
 
   subgraph Views["Role views + authz"]
@@ -72,9 +72,9 @@ flowchart TB
   S --> SQ
   S --> EX
 
-  CFG["Config: squads ↔ repos ↔ deploy signals"] -.-> C
+  CFG["Config: squads to repos to deploy signals"] -.-> C
   CFG -.-> M
-  AUTH["Guards: requireExec / requireSquadAccess<br/>k-anonymity · audit · identity hash"] -.-> SQ
+  AUTH["Guards: requireExec / requireSquadAccess<br/>k-anonymity, audit, identity hash"] -.-> SQ
   AUTH -.-> EX
 ```
 
@@ -95,7 +95,7 @@ flowchart LR
 
   subgraph Exec["Leadership exec"]
     EX1["Org DORA"]
-    EX2["Squad comparison<br/>k-anonymity ≥ 5"]
+    EX2["Squad comparison<br/>k-anonymity floor of 5"]
     EX3["Investment mix"]
   end
 
@@ -110,13 +110,9 @@ flowchart LR
   Exec -.->|never reads| Hidden
 ```
 
-| Audience | Sees | Does not see |
-| --- | --- | --- |
-| Squad lead | Own squad DORA/SPACE, per-repo breakdown, stalled open PRs (by PR, without person ranking), WIP | Other squads; org-wide person lists |
-| Leadership (exec) | Org DORA, squad comparison with a k-anonymity floor (≥5 contributors), investment mix | Person IDs, repo lists used as team proxies, squad drill-down |
-
 A lead can see individual items when they unblock flow (for example a PR waiting
-days). Those details are not rolled up into org leaderboards.
+days). Those details are not rolled up into org leaderboards. Exec never gets
+squad drill-down or person-level lists.
 
 ### Access and security
 
@@ -150,14 +146,14 @@ flowchart TB
     EC["Connector: GitHub + Actions"]
     ECanon["Canonical: commits, deploys, PRs"]
     EM["Metrics: DORA / SPACE"]
-    ECfg["Config: squads ↔ repos"]
+    ECfg["Config: squads to repos"]
   end
 
   subgraph Next["Risk or Marketing tomorrow"]
     NC["Connector: cases / campaigns"]
     NCanon["Canonical: cases, releases, campaigns"]
     NM["Domain metric definitions"]
-    NCfg["Config: teams ↔ surfaces"]
+    NCfg["Config: teams to surfaces"]
   end
 
   EC --> RAW
@@ -171,14 +167,6 @@ flowchart TB
   ECfg -.-> EC
   NCfg -.-> NC
 ```
-
-| Layer | Engineering today | Risk / Marketing tomorrow |
-| --- | --- | --- |
-| Connector | GitHub + Actions | Case system / campaign analytics |
-| Canonical | commits, deploys, PRs | cases, releases, campaigns |
-| Metrics | DORA / SPACE definitions | Domain definitions, same snapshot schema |
-| Config | squads ↔ repos | teams ↔ product surfaces |
-| Views / RBAC | exec vs squad_lead | exec vs domain_lead, same guard pattern |
 
 A new domain needs a connector, config, and metric definitions. The raw store,
 snapshotter, authz, and view shells stay. For Risk that might mean policy-change
