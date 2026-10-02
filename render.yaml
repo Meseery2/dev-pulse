@@ -40,7 +40,7 @@ services:
     schedule: "0 */6 * * *"
     buildCommand: npm ci --omit=dev
     startCommand: >-
-      node -e "fetch('https://dev-pulse.onrender.com/api/cron/sync',{method:'POST',headers:{Authorization:'Bearer '+process.env.CRON_SECRET}}).then(async r=>{console.log(await r.text()); if(!r.ok) process.exit(1)})"
+      node -e "fetch('https://dev-pulse-710m.onrender.com/api/cron/sync',{method:'POST',headers:{Authorization:'Bearer '+process.env.CRON_SECRET}}).then(async r=>{console.log(await r.text()); if(!r.ok) process.exit(1)})"
     envVars:
       - key: CRON_SECRET
         fromService:
