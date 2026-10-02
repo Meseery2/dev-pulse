@@ -24,6 +24,11 @@ Open [http://localhost:44817](http://localhost:44817).
 | `manager1` | `runtime-demo-2026` | Squad lead — Runtime         |
 | `manager2` | `experience-demo-2026` | Squad lead — Experience   |
 
+## Repository
+
+- **GitHub:** https://github.com/Meseery2/dev-pulse
+- **Origin:** https://cursor.com/codebase/mohamed-elmeseery/dev-pulse
+
 ## Deploy on Render
 
 This repo includes a Blueprint (`render.yaml`) and a production `Dockerfile`.
