@@ -158,7 +158,9 @@ GitHub REST + Actions connectors · Recharts · Render
 ## Written assessment
 
 Metric design, architecture, 90-day plan, and scale reversal:
-[`docs/ASSESSMENT.md`](docs/ASSESSMENT.md)
+
+- Markdown: [`docs/ASSESSMENT.md`](docs/ASSESSMENT.md)
+- PDF: [`docs/ASSESSMENT.pdf`](docs/ASSESSMENT.pdf)
 
 ## Repository
 
