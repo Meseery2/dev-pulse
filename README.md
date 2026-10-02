@@ -1,118 +1,161 @@
 # Dev Pulse — MAL Engineering Productivity Dashboard
 
 Role-scoped DORA and flow metrics for **MAL** engineering leads and leadership.
-Single Next.js app + Postgres, with live GitHub ingestion and a deterministic
-seed so the UI is always demoable. Visual theme aligned with [mal.ai](https://www.mal.ai).
+Next.js web app + Postgres on Render, with live GitHub / GitHub Actions ingestion
+and labeled synthetic data where live org systems are unavailable.
 
-## Live dashboard
+**Public URL:** https://dev-pulse-web.onrender.com  
+**Health:** https://dev-pulse-web.onrender.com/api/health
 
-| | |
+---
+
+## Requirements checklist
+
+| Requirement | How this project meets it |
 | --- | --- |
-| **URL** | https://dev-pulse-web.onrender.com |
-| **Health** | https://dev-pulse-web.onrender.com/api/health |
-| **Host** | Render (free web service + Postgres) |
-| **Auto-deploy** | On push to `main` |
-| **Ingestion** | Live GitHub sync enabled (`GITHUB_TOKEN` set on Render) |
+| ≥2 live data sources | **(1)** GitHub REST — commits, PRs, reviews · **(2)** GitHub Actions — workflow runs as the production-deploy signal |
+| ≥4 metrics, ≥2 DORA | All **four DORA** metrics + SPACE (review responsiveness, change batch size) + Flow (merge throughput). Flow efficiency / unplanned work are seeded PM metrics |
+| Eng-lead view | `/squad/[id]` — squad DORA, per-repo breakdown, stalled PR queue, WIP |
+| CEO-office view | `/exec` — org roll-ups only; k-anonymity floor; no person-level rows in page or API |
+| Real access control | Distinct credentials + server-side `requireRole` / `requireSquadAccess` (not URL-only). APIs enforce the same guards |
+| Deployed web app | Render: https://dev-pulse-web.onrender.com |
+| Live vs seeded documented | See [Live vs seeded](#live-vs-seeded) below |
+| Known limitation | See [Known limitation](#known-limitation-to-fix-next) below |
 
-### Demo logins
+---
+
+## Demo logins
 
 | Username | Password | Lands on | Role |
 | --- | --- | --- | --- |
-| `admin` | `exec-demo-2026` | `/exec` | MAL Leadership — org aggregates only (no person-level rows) |
+| `admin` | `exec-demo-2026` | `/exec` | MAL Leadership — org aggregates only |
 | `manager1` | `runtime-demo-2026` | `/squad/runtime` | Squad lead — Runtime |
 | `manager2` | `experience-demo-2026` | `/squad/experience` | Squad lead — Experience |
 
-Access control is enforced server-side (`requireRole`), not by URL alone.
+An `exec` session calling `/api/metrics/squad/*` receives **403**. A squad lead calling `/api/metrics/org` or another squad’s route also receives **403**. Verified with `scripts/verify-access.ts`.
 
-### What each view shows
+---
 
-- **`/exec`** — MAL org-level DORA + SPACE/flow roll-ups, squad comparison with a
-  k-anonymity floor, investment mix. Never serializes person identifiers.
-- **`/squad/[id]`** — Squad DORA tiles, per-repo breakdown, stalled PR review
-  queue, WIP. Person-level detail only where it unblocks flow.
-
-## Repository
-
-- **GitHub:** https://github.com/Meseery2/dev-pulse
-- **Origin:** https://cursor.com/codebase/mohamed-elmeseery/dev-pulse
-
-## Live vs seeded data
+## Data sources
 
 Configured in [`config/sources.json`](config/sources.json).
 
-| Source | Provenance | Notes |
-| --- | --- | --- |
-| `honojs/hono`, `withastro/starlight` | **Live** (Runtime squad) | GitHub REST + Actions when `GITHUB_TOKEN` is set |
-| `pmndrs/zustand`, `TanStack/query` | **Live** (Experience squad) | Same |
-| `mal/payments-*` | **Seeded** (Payments squad) | Synthetic; no public repo equivalent |
-| Flow efficiency / unplanned work | **Seeded** | Project-management path; labeled in the UI |
+### Live (require `GITHUB_TOKEN`)
 
-Seeded rows carry `is_seeded` and surface a **Seeded** badge in the UI.
+| Source | API | What we ingest | Used for |
+| --- | --- | --- | --- |
+| **GitHub** | REST | Commits, pull requests, review comments | Lead time join, review responsiveness, batch size, merge throughput, cycle-related PR age |
+| **GitHub Actions** | Actions / workflow runs API | Successful & failed production-signal runs | Deployment frequency, change failure rate, recovery time, deploy↔commit join |
+
+Live repositories (public stand-ins for MAL squads):
+
+- Runtime: `honojs/hono`, `withastro/starlight`
+- Experience: `pmndrs/zustand`, `TanStack/query`
+
+Production-deploy signal is **configurable per repo** (workflow name + branch) because public repos rarely have a literal `production` environment.
+
+### Seeded (synthetic, labeled in UI)
+
+| Source | What | Used for |
+| --- | --- | --- |
+| Synthetic generator | `mal/payments-api`, `mal/billing-worker` + work items | Payments squad DORA demos; **flow efficiency** and **unplanned work** (project-management shape) |
+
+Seeded rows set `is_seeded` / `has_seeded_inputs`. The UI shows **Seeded** (fully synthetic scope) or **Mixed** (org aggregates that include some seeded inputs).
 
 ### Sync
 
-- **Endpoint:** `POST /api/cron/sync` with `Authorization: Bearer $CRON_SECRET`
-- **Local:** `npm run data:sync`
-- Bootstrapping on Render runs schema + demo accounts + seed-if-empty, then
-  serves. Live sync is separate (cron or manual POST above).
+- `POST /api/cron/sync` with `Authorization: Bearer $CRON_SECRET`
+- Local: `npm run data:sync`
+- Boot on Render: schema + accounts + seed-if-empty; live sync is separate
 
-## Quick start (local)
+---
+
+## Metrics
+
+| Metric | Family | Provenance (with token) |
+| --- | --- | --- |
+| Deployment Frequency | DORA | Live (Actions) |
+| Lead Time for Changes | DORA | Live (commits ↔ deploy SHA join) |
+| Change Failure Rate | DORA | Live (failed runs / reverts / incidents) |
+| Failed Deployment Recovery Time (MTTR) | DORA | Live |
+| Review Responsiveness | SPACE | Live (PR → first non-author review) |
+| Change Batch Size | SPACE | Live (commits per deploy / PR size) |
+| Merge Throughput | Flow | Live |
+| Flow Efficiency | Flow | **Seeded** (PM work items) |
+| Unplanned Work | Flow | **Seeded** (PM work items) |
+
+---
+
+## Setup (local)
 
 ```bash
 cp .env.example .env.local
-# set DATABASE_URL (and SESSION_SECRET ≥ 16 chars)
+# Required: DATABASE_URL, SESSION_SECRET (≥ 16 chars)
+# Optional: GITHUB_TOKEN, CRON_SECRET, IDENTITY_SALT
 npm ci
 npm run db:bootstrap
 npm run dev
 ```
 
-Open [http://localhost:44817](http://localhost:44817).
+Open [http://localhost:44817](http://localhost:44817).  
+With a token: `npm run data:sync`.
 
-Optional: set `GITHUB_TOKEN` in `.env.local`, then `npm run data:sync`.
-
-## Environment variables
+### Environment variables
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | Yes | Postgres connection string |
+| `DATABASE_URL` | Yes | Postgres |
 | `SESSION_SECRET` | Yes | JWT signing (≥ 16 characters) |
-| `CRON_SECRET` | Yes (for sync) | Bearer token for `/api/cron/sync` |
-| `GITHUB_TOKEN` | No | Enables live GitHub ingestion |
-| `IDENTITY_SALT` | No | Hash salt for contributor identities |
-| `ADMIN_PASSWORD` / `MANAGER1_PASSWORD` / `MANAGER2_PASSWORD` | No | Override demo passwords |
+| `CRON_SECRET` | For sync endpoint | Bearer for `/api/cron/sync` |
+| `GITHUB_TOKEN` | For live ingestion | GitHub REST + Actions |
+| `IDENTITY_SALT` | No | Contributor identity hashing |
+| `*_PASSWORD` | No | Override demo passwords |
 
-## Deploy on Render
+### Deploy (Render)
 
-Repo includes [`render.yaml`](render.yaml) and a production [`Dockerfile`](Dockerfile).
+Git-backed service from https://github.com/Meseery2/dev-pulse (`main`):
 
-Current production service (Option B — git-backed web service):
+- Build: `npm ci --include=dev && npm run build`
+- Start: `npx tsx scripts/bootstrap.ts && npm start`
+- Health: `/api/health`
+- Env: `DATABASE_URL`, `SESSION_SECRET`, `CRON_SECRET`, `IDENTITY_SALT`, `GITHUB_TOKEN`
 
-1. [Render GitHub App](https://github.com/apps/render/installations/new) has
-   access to **`Meseery2/dev-pulse`**.
-2. Web service **`dev-pulse-web`** from this repo, branch `main`:
-   - **Build:** `npm ci --include=dev && npm run build`
-   - **Start:** `npx tsx scripts/bootstrap.ts && npm start`
-   - **Health check:** `/api/health`
-3. Env: `DATABASE_URL` (from Render Postgres `dev-pulse-db`),
-   `SESSION_SECRET`, `CRON_SECRET`, `IDENTITY_SALT`, and `GITHUB_TOKEN`.
+Also see [`render.yaml`](render.yaml). Dashboard: https://dashboard.render.com/web/srv-davvg3gu01pc7389vi5g
 
-Dashboard: https://dashboard.render.com/web/srv-davvg3gu01pc7389vi5g
+---
 
-> Build must use `--include=dev` so `@tailwindcss/postcss` is available during
-> `next build` (production `npm ci` would omit it).
+## Known limitation (to fix next)
+
+**Production-deploy signal on public repositories is an imperfect proxy.**  
+We map “production” to named workflow runs (e.g. `Release`, `cr`) because public repos rarely expose a true production environment. That can:
+
+1. Count CI/release jobs that are not user-facing production deploys (inflating deployment frequency).
+2. Produce very short lead times when the “deploy” SHA is close to author time on a release automation path.
+
+**Next fix:** Prefer GitHub Deployments / Environments when present, fall back to workflow names, and surface per-repo signal confidence in the UI so a short lead time is never mistaken for Elite delivery without context.
+
+Other follow-ups: raise the per-sync API budget / watermark pacing so large repos are not truncated mid-window; add a real Linear/Jira connector so flow metrics are live.
+
+---
 
 ## Scripts
 
 | Script | Purpose |
 | --- | --- |
 | `npm run db:bootstrap` | Schema + accounts + seed-if-empty + snapshots |
-| `npm run db:push` | Apply schema only |
-| `npm run db:seed` | Force synthetic seed + snapshots |
-| `npm run data:sync` | Live GitHub sync |
-| `npm run data:refresh` | Re-normalize + rematerialize snapshots |
-| `npm run test` | Unit tests (metrics, etc.) |
+| `npm run db:push` | Schema only |
+| `npm run db:seed` | Force synthetic seed |
+| `npm run data:sync` | Live GitHub + Actions sync |
+| `npm run data:refresh` | Re-normalize + rematerialize |
+| `npm run test` | Unit tests |
+| `npx tsx scripts/verify-access.ts` | RBAC matrix against a running server |
 
 ## Stack
 
-Next.js 16 (App Router) · TypeScript · Tailwind · shadcn/ui · Postgres ·
-Drizzle · GitHub REST/Actions connectors · Recharts
+Next.js 16 · TypeScript · Tailwind · shadcn/ui · Postgres · Drizzle ·
+GitHub REST + Actions connectors · Recharts · Render
+
+## Repository
+
+- GitHub: https://github.com/Meseery2/dev-pulse
+- Origin: https://cursor.com/codebase/mohamed-elmeseery/dev-pulse

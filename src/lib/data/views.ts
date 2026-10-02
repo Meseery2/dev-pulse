@@ -34,6 +34,9 @@ export interface MetricCard {
   sampleSize: number;
   previousValue: number | null;
   band: string | null;
+  /** True only when every contributing input for this scope is seeded. */
+  isSeeded: boolean;
+  /** True when any contributing input is seeded (may still be mostly live). */
   hasSeededInputs: boolean;
   trend: MetricPoint[];
 }
@@ -98,6 +101,7 @@ async function loadCards(scopeType: "org" | "squad" | "repo", scopeId: string): 
       sampleSize: latest?.sampleSize ?? 0,
       previousValue: previous ? toNumber(previous.value) : null,
       band: doraBand(key, value),
+      isSeeded: latest?.isSeeded ?? false,
       hasSeededInputs: latest?.hasSeededInputs ?? false,
       trend: series.map((row) => ({
         periodEnd: row.periodEnd.toISOString(),

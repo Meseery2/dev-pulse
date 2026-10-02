@@ -51,7 +51,11 @@ export function MetricTile({ card }: { card: MetricCard }) {
           ) : (
             <Badge variant="outline">{card.family}</Badge>
           )}
-          {card.hasSeededInputs ? <Badge variant="outline">Seeded</Badge> : null}
+          {card.isSeeded ? (
+            <Badge variant="outline">Seeded</Badge>
+          ) : card.hasSeededInputs ? (
+            <Badge variant="outline">Mixed</Badge>
+          ) : null}
         </CardAction>
       </CardHeader>
 
