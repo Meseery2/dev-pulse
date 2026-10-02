@@ -155,6 +155,11 @@ Other follow-ups: raise the per-sync API budget / watermark pacing so large repo
 Next.js 16 · TypeScript · Tailwind · shadcn/ui · Postgres · Drizzle ·
 GitHub REST + Actions connectors · Recharts · Render
 
+## Written assessment
+
+Metric design, architecture, 90-day plan, and scale reversal:
+[`docs/ASSESSMENT.md`](docs/ASSESSMENT.md)
+
 ## Repository
 
 - GitHub: https://github.com/Meseery2/dev-pulse
