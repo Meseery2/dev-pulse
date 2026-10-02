@@ -1,11 +1,11 @@
 import type { RepoConfig } from "../config/sources";
 import type {
-  GhCommit,
-  GhPullRequest,
-  GhReviewComment,
-  GhWorkflowRun,
-} from "../connectors/github/resources";
-import { hashIdentity, looksLikeBot, stableId } from "../util/identity";
+  RawCommitRecord,
+  RawPullRecord,
+  RawReviewCommentRecord,
+  RawWorkflowRunRecord,
+} from "../connectors/github/project";
+import { stableId } from "../util/identity";
 
 export interface CommitRow {
   sha: string;
@@ -64,116 +64,108 @@ export interface IncidentRow {
   resolvedAt: Date | null;
 }
 
-const REVERT_SHA = /This reverts commit ([0-9a-f]{7,40})/i;
-
-export function normalizeCommits(raw: (GhCommit & { __branchPosition?: number })[], repoSlug: string): CommitRow[] {
+export function normalizeCommits(raw: RawCommitRecord[], repoSlug: string): CommitRow[] {
   return raw
-    .filter((commit) => commit?.sha && commit.commit?.author?.date)
-    .map((commit) => {
-      const login = commit.author?.login ?? null;
-      const message = commit.commit.message ?? "";
-      const revertMatch = message.match(REVERT_SHA);
-      return {
-        sha: commit.sha,
-        repoSlug,
-        identityHash: login ? hashIdentity(login) : null,
-        isBot: looksLikeBot(login, commit.author?.type),
-        authoredAt: new Date(commit.commit.author!.date),
-        committedAt: commit.commit.committer?.date ? new Date(commit.commit.committer.date) : null,
-        branchPosition: commit.__branchPosition ?? null,
-        isRevert: /^Revert[ "]/i.test(message) || REVERT_SHA.test(message),
-        revertsSha: revertMatch ? revertMatch[1] : null,
-        isMerge: (commit.parents?.length ?? 0) > 1,
-      };
-    });
+    .filter((commit) => commit?.sha && commit.authoredAt)
+    .map((commit) => ({
+      sha: commit.sha,
+      repoSlug,
+      identityHash: commit.authorHash,
+      isBot: commit.authorIsBot,
+      authoredAt: new Date(commit.authoredAt),
+      committedAt: commit.committedAt ? new Date(commit.committedAt) : null,
+      branchPosition: commit.branchPosition ?? null,
+      isRevert: commit.isRevert,
+      revertsSha: commit.revertsSha,
+      isMerge: (commit.parentCount ?? 1) > 1,
+    }));
 }
 
 /**
  * First review time is derived from repository-wide review comments rather
- * than per-pull-request review calls. Comments authored by the pull request
- * author do not count as a review.
+ * than per-pull-request review calls, which is what keeps review latency
+ * affordable inside a 60 requests/hour budget. A comment by the pull request
+ * author is not a review.
  */
 export function normalizePullRequests(
-  raw: GhPullRequest[],
-  details: GhPullRequest[],
-  comments: GhReviewComment[],
+  raw: RawPullRecord[],
+  details: RawPullRecord[],
+  comments: RawReviewCommentRecord[],
   repoSlug: string,
 ): PullRequestRow[] {
   const detailByNumber = new Map(details.map((d) => [d.number, d]));
 
-  const firstReviewByNumber = new Map<number, { at: Date; login: string | null }>();
+  const firstReviewByNumber = new Map<number, { at: Date; authorHash: string | null }>();
   for (const comment of comments) {
-    const number = pullNumberFromUrl(comment.pull_request_url);
-    if (number === null || !comment.created_at) continue;
-    const at = new Date(comment.created_at);
-    const existing = firstReviewByNumber.get(number);
+    if (comment.pullNumber === null || !comment.createdAt) continue;
+    const at = new Date(comment.createdAt);
+    const existing = firstReviewByNumber.get(comment.pullNumber);
     if (!existing || at < existing.at) {
-      firstReviewByNumber.set(number, { at, login: comment.user?.login ?? null });
+      firstReviewByNumber.set(comment.pullNumber, { at, authorHash: comment.authorHash });
     }
   }
 
   return raw
-    .filter((pr) => pr?.number && pr.created_at)
+    .filter((pr) => pr?.number && pr.createdAt)
     .map((pr) => {
       const detail = detailByNumber.get(pr.number);
-      const authorLogin = pr.user?.login ?? null;
       const review = firstReviewByNumber.get(pr.number);
       const selfReview =
-        review?.login && authorLogin && review.login.toLowerCase() === authorLogin.toLowerCase();
+        review?.authorHash !== null &&
+        review?.authorHash !== undefined &&
+        pr.authorHash !== null &&
+        review.authorHash === pr.authorHash;
 
       return {
         id: stableId("github", "pr", repoSlug, pr.number),
         repoSlug,
         number: pr.number,
-        identityHash: authorLogin ? hashIdentity(authorLogin) : null,
-        isBot: looksLikeBot(authorLogin, pr.user?.type),
-        openedAt: new Date(pr.created_at),
-        readyAt: pr.draft ? null : new Date(pr.created_at),
+        identityHash: pr.authorHash,
+        isBot: pr.authorIsBot,
+        openedAt: new Date(pr.createdAt),
+        readyAt: pr.draft ? null : new Date(pr.createdAt),
         firstReviewAt: review && !selfReview ? review.at : null,
-        mergedAt: pr.merged_at ? new Date(pr.merged_at) : null,
-        closedAt: pr.closed_at ? new Date(pr.closed_at) : null,
-        mergeCommitSha: pr.merge_commit_sha ?? null,
-        additions: detail?.additions ?? null,
-        deletions: detail?.deletions ?? null,
-        changedFiles: detail?.changed_files ?? null,
-        isDraft: Boolean(pr.draft),
+        mergedAt: pr.mergedAt ? new Date(pr.mergedAt) : null,
+        closedAt: pr.closedAt ? new Date(pr.closedAt) : null,
+        mergeCommitSha: pr.mergeCommitSha,
+        additions: detail?.additions ?? pr.additions ?? null,
+        deletions: detail?.deletions ?? pr.deletions ?? null,
+        changedFiles: detail?.changedFiles ?? pr.changedFiles ?? null,
+        isDraft: pr.draft,
       };
     });
 }
 
-export function pullNumberFromUrl(url: string | undefined): number | null {
-  if (!url) return null;
-  const match = url.match(/\/pulls\/(\d+)$/);
-  return match ? Number(match[1]) : null;
-}
-
 /**
- * Only `success` and `failure` conclusions describe a deployment outcome.
- * GitHub also reports `skipped`, `cancelled`, `action_required`, `neutral` and
- * `null` (still running) — counting any of those as a failure would inflate
- * change failure rate, and counting them as successes would inflate deployment
- * frequency. They are excluded from both sides of the ratio.
+ * Only `success` and `failure` describe a deployment outcome. GitHub also
+ * reports `skipped`, `cancelled`, `action_required`, `neutral` and `null`
+ * (still running). Counting those as failures would inflate change failure
+ * rate; counting them as successes would inflate deployment frequency. They
+ * are excluded from both sides of the ratio.
  */
-export function normalizeDeployments(runs: GhWorkflowRun[], repo: RepoConfig): DeploymentRow[] {
+export function normalizeDeployments(
+  runs: RawWorkflowRunRecord[],
+  repo: RepoConfig,
+): DeploymentRow[] {
   const wanted = new Set(repo.deploySignal.workflowNames.map((n) => n.toLowerCase()));
   const branches = new Set(repo.deploySignal.branches);
 
   return runs
     .filter((run) => {
       if (!run?.name || !wanted.has(run.name.toLowerCase())) return false;
-      if (run.head_branch && !branches.has(run.head_branch)) return false;
+      if (run.headBranch && !branches.has(run.headBranch)) return false;
       if (run.status !== "completed") return false;
       return run.conclusion === "success" || run.conclusion === "failure";
     })
     .map((run) => {
-      const startedAt = new Date(run.run_started_at ?? run.created_at);
-      const finishedAt = new Date(run.updated_at);
+      const startedAt = new Date(run.runStartedAt ?? run.createdAt);
+      const finishedAt = new Date(run.updatedAt);
       return {
         id: stableId("github", "deploy", repo.slug, run.id),
         repoSlug: repo.slug,
         environment: "production",
         status: run.conclusion as "success" | "failure",
-        headSha: run.head_sha,
+        headSha: run.headSha,
         workflowName: run.name!,
         startedAt,
         finishedAt: finishedAt >= startedAt ? finishedAt : startedAt,
@@ -185,7 +177,7 @@ export function normalizeDeployments(runs: GhWorkflowRun[], repo: RepoConfig): D
  * Resolves which commits each successful deployment shipped by diffing against
  * the previous successful deployment of the same workflow.
  *
- * Deployments are grouped by workflow because a repository can have more than
+ * Deployments are grouped by workflow because a repository can run more than
  * one production pipeline; interleaving them would produce overlapping commit
  * ranges and double-count lead time.
  *
@@ -202,7 +194,7 @@ export function joinDeploymentCommits(
   for (const commit of commits) {
     if (commit.branchPosition !== null) positionBySha.set(commit.sha, commit.branchPosition);
   }
-  const ordered = [...commits]
+  const ordered = commits
     .filter((c) => c.branchPosition !== null)
     .sort((a, b) => a.branchPosition! - b.branchPosition!);
 
@@ -217,9 +209,7 @@ export function joinDeploymentCommits(
   }
 
   for (const list of byWorkflow.values()) {
-    const chronological = [...list].sort(
-      (a, b) => a.finishedAt.getTime() - b.finishedAt.getTime(),
-    );
+    const chronological = [...list].sort((a, b) => a.finishedAt.getTime() - b.finishedAt.getTime());
     for (let i = 1; i < chronological.length; i += 1) {
       const current = chronological[i];
       const previous = chronological[i - 1];
@@ -243,8 +233,8 @@ export function joinDeploymentCommits(
 /**
  * Change failures are detected from two independent signals, because neither
  * is sufficient alone: a failed pipeline run catches broken deploys, and a
- * revert catches bad code that deployed cleanly. Work-item incidents are the
- * third signal and arrive from the project-management connector.
+ * revert catches bad code that deployed cleanly. Linked incident work items
+ * are the third signal and arrive from the project-management connector.
  */
 export function deriveIncidents(
   deployments: DeploymentRow[],
@@ -277,7 +267,6 @@ export function deriveIncidents(
     }
   }
 
-  // A revert points at the deployment that shipped the reverted commit.
   const deploymentBySha = new Map<string, string>();
   for (const row of deploymentCommits) {
     deploymentBySha.set(`${row.repoSlug}::${row.sha}`, row.deploymentId);

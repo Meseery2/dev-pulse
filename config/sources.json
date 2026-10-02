@@ -16,8 +16,8 @@
       "id": "experience",
       "name": "Experience",
       "description": "Client libraries and data layer.",
-      "repos": ["pmndrs/zustand", "drizzle-team/drizzle-orm"],
-      "codeownersTeams": ["@pmndrs/zustand", "@drizzle-team/core"]
+      "repos": ["pmndrs/zustand", "TanStack/query"],
+      "codeownersTeams": ["@pmndrs/zustand", "@TanStack/query"]
     },
     {
       "id": "payments",
@@ -59,12 +59,12 @@
       }
     },
     {
-      "slug": "drizzle-team/drizzle-orm",
+      "slug": "TanStack/query",
       "defaultBranch": "main",
       "provenance": "live",
       "deploySignal": {
         "kind": "workflow",
-        "workflowNames": ["Release Router"],
+        "workflowNames": ["Release"],
         "branches": ["main"]
       }
     },

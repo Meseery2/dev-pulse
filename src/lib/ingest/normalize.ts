@@ -12,11 +12,11 @@ import {
 } from "../db/schema";
 import { sourcesConfig, squadForRepo } from "../config/sources";
 import type {
-  GhCommit,
-  GhPullRequest,
-  GhReviewComment,
-  GhWorkflowRun,
-} from "../connectors/github/resources";
+  RawCommitRecord,
+  RawPullRecord,
+  RawReviewCommentRecord,
+  RawWorkflowRunRecord,
+} from "../connectors/github/project";
 import { readRawEvents } from "./raw-store";
 import {
   deriveIncidents,
@@ -114,15 +114,11 @@ export async function normalizeGitHub(): Promise<NormalizeResult> {
     if (repo.provenance !== "live") continue;
     const slug = repo.slug;
 
-    const rawCommits = await readRawEvents<GhCommit & { __branchPosition?: number }>(
-      "github",
-      "commit",
-      slug,
-    );
-    const rawPulls = await readRawEvents<GhPullRequest>("github", "pull_request", slug);
-    const rawDetails = await readRawEvents<GhPullRequest>("github", "pull_request_detail", slug);
-    const rawComments = await readRawEvents<GhReviewComment>("github", "review_comment", slug);
-    const rawRuns = await readRawEvents<GhWorkflowRun>("github", "workflow_run", slug);
+    const rawCommits = await readRawEvents<RawCommitRecord>("github", "commit", slug);
+    const rawPulls = await readRawEvents<RawPullRecord>("github", "pull_request", slug);
+    const rawDetails = await readRawEvents<RawPullRecord>("github", "pull_request_detail", slug);
+    const rawComments = await readRawEvents<RawReviewCommentRecord>("github", "review_comment", slug);
+    const rawRuns = await readRawEvents<RawWorkflowRunRecord>("github", "workflow_run", slug);
 
     const commitRows = normalizeCommits(rawCommits, slug);
     const prRows = normalizePullRequests(rawPulls, rawDetails, rawComments, slug);

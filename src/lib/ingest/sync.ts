@@ -16,6 +16,12 @@ import {
   fetchWorkflowRuns,
   type GhPullRequest,
 } from "../connectors/github/resources";
+import {
+  projectCommit,
+  projectPullRequest,
+  projectReviewComment,
+  projectWorkflowRun,
+} from "../connectors/github/project";
 import { writeRawEvents, type RawRecord } from "./raw-store";
 import { stableId } from "../util/identity";
 
@@ -34,7 +40,7 @@ export interface SyncResult {
   requestsUsed: number;
   rowsWritten: number;
   rateLimited: boolean;
-  repos: { slug: string; rows: number; error?: string }[];
+  repos: { slug: string; rows: number; truncated?: boolean; error?: string }[];
   message: string;
 }
 
@@ -69,14 +75,27 @@ async function setWatermark(resource: string, repoSlug: string, etag: string | n
     });
 }
 
+/** Worst-case requests a single repository needs for its core resources. */
+const CORE_REQUESTS_PER_REPO = 8;
+
+interface RepoSyncOutcome {
+  rows: number;
+  truncated: boolean;
+  mergedPullNumbers: number[];
+}
+
 async function syncRepo(
   client: GitHubClient,
   repo: RepoConfig,
   lookback: Date,
-  enrich: boolean,
-): Promise<number> {
+): Promise<RepoSyncOutcome> {
   const records: RawRecord[] = [];
   const slug = repo.slug;
+  let truncated = false;
+  // Watermarks are collected here and only committed after the rows they
+  // describe are durably written. Advancing a watermark first would make the
+  // next run receive a 304 and skip data that was never actually stored.
+  const pendingWatermarks: { resource: string; etag: string | null }[] = [];
 
   const commitState = await getWatermark("commits", slug);
   const commits = await fetchCommits(client, slug, repo.defaultBranch, {
@@ -89,16 +108,18 @@ async function syncRepo(
     // default branch in topological order; it is what lets the deployment /
     // commit join run locally instead of costing one compare call per deploy.
     commits.items.forEach((commit, index) => {
+      const projected = projectCommit(commit, index);
+      if (!projected) return;
       records.push({
         source: SOURCE_GITHUB,
         kind: "commit",
-        externalId: `${slug}#${commit.sha}`,
+        externalId: `${slug}#${projected.sha}`,
         repoSlug: slug,
-        payload: { ...commit, __branchPosition: index, __repoSlug: slug },
-        occurredAt: commit.commit.author?.date ? new Date(commit.commit.author.date) : null,
+        payload: projected,
+        occurredAt: new Date(projected.authoredAt),
       });
     });
-    await setWatermark("commits", slug, commits.etag);
+    pendingWatermarks.push({ resource: "commits", etag: commits.etag });
   }
 
   const runState = await getWatermark("workflow_runs", slug);
@@ -109,16 +130,18 @@ async function syncRepo(
   });
   if (!runs.notModified) {
     for (const run of runs.items) {
+      const projected = projectWorkflowRun(run);
+      if (!projected) continue;
       records.push({
         source: SOURCE_GITHUB,
         kind: "workflow_run",
-        externalId: `${slug}#${run.id}`,
+        externalId: `${slug}#${projected.id}`,
         repoSlug: slug,
-        payload: { ...run, __repoSlug: slug },
-        occurredAt: new Date(run.updated_at),
+        payload: projected,
+        occurredAt: new Date(projected.updatedAt),
       });
     }
-    await setWatermark("workflow_runs", slug, runs.etag);
+    pendingWatermarks.push({ resource: "workflow_runs", etag: runs.etag });
   }
 
   const prState = await getWatermark("pulls", slug);
@@ -129,16 +152,18 @@ async function syncRepo(
   });
   if (!pulls.notModified) {
     for (const pr of pulls.items) {
+      const projected = projectPullRequest(pr);
+      if (!projected) continue;
       records.push({
         source: SOURCE_GITHUB,
         kind: "pull_request",
-        externalId: `${slug}#${pr.number}`,
+        externalId: `${slug}#${projected.number}`,
         repoSlug: slug,
-        payload: { ...pr, __repoSlug: slug },
-        occurredAt: new Date(pr.updated_at),
+        payload: projected,
+        occurredAt: new Date(projected.updatedAt),
       });
     }
-    await setWatermark("pulls", slug, pulls.etag);
+    pendingWatermarks.push({ resource: "pulls", etag: pulls.etag });
   }
 
   const commentState = await getWatermark("review_comments", slug);
@@ -149,42 +174,79 @@ async function syncRepo(
   });
   if (!comments.notModified) {
     for (const comment of comments.items) {
+      const projected = projectReviewComment(comment);
+      if (!projected) continue;
       records.push({
         source: SOURCE_GITHUB,
         kind: "review_comment",
-        externalId: `${slug}#${comment.id}`,
+        externalId: `${slug}#${projected.id}`,
         repoSlug: slug,
-        payload: { ...comment, __repoSlug: slug },
-        occurredAt: new Date(comment.created_at),
+        payload: projected,
+        occurredAt: new Date(projected.createdAt),
       });
     }
-    await setWatermark("review_comments", slug, comments.etag);
+    pendingWatermarks.push({ resource: "review_comments", etag: comments.etag });
   }
 
-  // Pull request size is only available on the per-PR endpoint. Rather than
-  // make it a hard requirement, leftover budget is spent on the most recently
-  // merged PRs and the metric reports its own sample size.
-  if (enrich) {
-    const mergedRecent = pulls.items
-      .filter((pr) => pr.merged_at)
-      .sort((a, b) => new Date(b.merged_at!).getTime() - new Date(a.merged_at!).getTime());
-    const reserve = 4;
-    for (const pr of mergedRecent) {
-      if (client.budget.remaining <= reserve) break;
+  truncated =
+    commits.truncated || runs.truncated || pulls.truncated || comments.truncated;
+
+  const mergedPullNumbers = pulls.items
+    .filter((pr) => pr.merged_at)
+    .sort((a, b) => new Date(b.merged_at!).getTime() - new Date(a.merged_at!).getTime())
+    .map((pr) => pr.number);
+
+  const rows = await writeRawEvents(records);
+  for (const watermark of pendingWatermarks) {
+    await setWatermark(watermark.resource, slug, watermark.etag);
+  }
+  return { rows, truncated, mergedPullNumbers };
+}
+
+/**
+ * Pull request size is only available on the per-pull-request endpoint, so it
+ * is enriched after every repository has had its core resources fetched.
+ * Running it inline would let the first repository spend the whole budget and
+ * leave later repositories with no data at all.
+ *
+ * Repositories are visited round-robin so a partial budget produces an even
+ * sample rather than a complete picture of one repository and nothing of the
+ * others.
+ */
+async function enrichPullRequests(
+  client: GitHubClient,
+  pending: { slug: string; numbers: number[] }[],
+): Promise<number> {
+  const records: RawRecord[] = [];
+  const queues = pending.map((entry) => ({ slug: entry.slug, numbers: [...entry.numbers] }));
+  let exhausted = false;
+
+  while (!exhausted && client.budget.remaining > 0) {
+    let progressed = false;
+    for (const queue of queues) {
+      if (client.budget.remaining <= 0) break;
+      const number = queue.numbers.shift();
+      if (number === undefined) continue;
+      progressed = true;
       try {
-        const detail: GhPullRequest = await fetchPullRequestDetail(client, slug, pr.number);
-        records.push({
-          source: SOURCE_GITHUB,
-          kind: "pull_request_detail",
-          externalId: `${slug}#${pr.number}`,
-          repoSlug: slug,
-          payload: { ...detail, __repoSlug: slug },
-          occurredAt: new Date(detail.updated_at),
-        });
+        const detail: GhPullRequest = await fetchPullRequestDetail(client, queue.slug, number);
+        const projected = projectPullRequest(detail);
+        if (projected) {
+          records.push({
+            source: SOURCE_GITHUB,
+            kind: "pull_request_detail",
+            externalId: `${queue.slug}#${number}`,
+            repoSlug: queue.slug,
+            payload: projected,
+            occurredAt: new Date(projected.updatedAt),
+          });
+        }
       } catch {
+        exhausted = true;
         break;
       }
     }
+    if (!progressed) break;
   }
 
   return writeRawEvents(records);
@@ -203,14 +265,27 @@ export async function runGitHubSync(options: SyncOptions = {}): Promise<SyncResu
 
   const repos = liveRepos();
   const perRepo: SyncResult["repos"] = [];
+  const enrichQueue: { slug: string; numbers: number[] }[] = [];
   let rowsWritten = 0;
   let rateLimited = false;
 
   for (const repo of repos) {
+    // Stopping before a repository that cannot be fetched completely is
+    // preferable to fetching it partially and silently reporting metrics from
+    // a fraction of its history.
+    if (!client.budget.canAfford(CORE_REQUESTS_PER_REPO)) {
+      rateLimited = true;
+      perRepo.push({ slug: repo.slug, rows: 0, error: "skipped: insufficient API budget" });
+      continue;
+    }
+
     try {
-      const rows = await syncRepo(client, repo, lookback, options.enrich ?? true);
-      rowsWritten += rows;
-      perRepo.push({ slug: repo.slug, rows });
+      const outcome = await syncRepo(client, repo, lookback);
+      rowsWritten += outcome.rows;
+      // Truncation is an expected outcome of a bounded page budget, not a
+      // failure: the next run picks up from the watermark.
+      perRepo.push({ slug: repo.slug, rows: outcome.rows, truncated: outcome.truncated });
+      enrichQueue.push({ slug: repo.slug, numbers: outcome.mergedPullNumbers });
     } catch (error) {
       // One source failing must not block the others, and a rate-limit stop is
       // an expected outcome rather than an error condition.
@@ -224,6 +299,18 @@ export async function runGitHubSync(options: SyncOptions = {}): Promise<SyncResu
         rows: 0,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  if ((options.enrich ?? true) && client.budget.remaining > 0) {
+    try {
+      rowsWritten += await enrichPullRequests(client, enrichQueue);
+    } catch (error) {
+      if (error instanceof RateLimitError || error instanceof BudgetExhaustedError) {
+        rateLimited = true;
+      } else {
+        throw error;
+      }
     }
   }
 

@@ -61,12 +61,22 @@ export interface GitHubClientOptions {
   budget: RequestBudget;
   userAgent?: string;
   fetchImpl?: typeof fetch;
+  /** Minimum gap between requests, to stay under GitHub's secondary rate limits. */
+  minIntervalMs?: number;
+  maxRetries?: number;
+  sleepImpl?: (ms: number) => Promise<void>;
 }
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export class GitHubClient {
   private readonly token?: string;
   private readonly userAgent: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly minIntervalMs: number;
+  private readonly maxRetries: number;
+  private readonly sleepImpl: (ms: number) => Promise<void>;
+  private lastRequestAt = 0;
   readonly budget: RequestBudget;
 
   constructor(options: GitHubClientOptions) {
@@ -74,15 +84,27 @@ export class GitHubClient {
     this.budget = options.budget;
     this.userAgent = options.userAgent ?? "engineering-productivity-dashboard";
     this.fetchImpl = options.fetchImpl ?? fetch;
+    // Unauthenticated traffic trips GitHub's burst protection quickly, so it
+    // is paced more conservatively than token traffic.
+    this.minIntervalMs = options.minIntervalMs ?? (options.token ? 150 : 900);
+    this.maxRetries = options.maxRetries ?? 3;
+    this.sleepImpl = options.sleepImpl ?? sleep;
   }
 
   get authenticated(): boolean {
     return Boolean(this.token);
   }
 
+  private async pace(): Promise<void> {
+    const elapsed = Date.now() - this.lastRequestAt;
+    if (this.lastRequestAt > 0 && elapsed < this.minIntervalMs) {
+      await this.sleepImpl(this.minIntervalMs - elapsed);
+    }
+    this.lastRequestAt = Date.now();
+  }
+
   async request<T>(path: string, etag?: string | null): Promise<GitHubResponse<T>> {
     const url = path.startsWith("http") ? path : `${API_ROOT}${path}`;
-    this.budget.consume();
 
     const headers: Record<string, string> = {
       Accept: "application/vnd.github+json",
@@ -92,35 +114,58 @@ export class GitHubClient {
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     if (etag) headers["If-None-Match"] = etag;
 
-    const response = await this.fetchImpl(url, { headers, cache: "no-store" });
+    for (let attempt = 0; ; attempt += 1) {
+      this.budget.consume();
+      await this.pace();
+      const response = await this.fetchImpl(url, { headers, cache: "no-store" });
 
-    if (response.status === 304) {
-      return { data: [] as unknown as T, etag: etag ?? null, notModified: true, nextUrl: null };
-    }
+      if (response.status === 304) {
+        return { data: [] as unknown as T, etag: etag ?? null, notModified: true, nextUrl: null };
+      }
 
-    if (response.status === 403 || response.status === 429) {
-      const remaining = response.headers.get("x-ratelimit-remaining");
-      if (remaining === "0" || response.headers.get("retry-after")) {
-        const resetHeader = response.headers.get("x-ratelimit-reset");
-        const resetAt = resetHeader ? new Date(Number(resetHeader) * 1000) : null;
+      if (response.status === 403 || response.status === 429) {
+        const body = await response.text();
+        const remaining = response.headers.get("x-ratelimit-remaining");
+        const retryAfter = response.headers.get("retry-after");
+
+        // The primary hourly quota is exhausted: no amount of waiting inside
+        // this run will help, so stop and let the next run resume.
+        if (remaining === "0") {
+          const resetHeader = response.headers.get("x-ratelimit-reset");
+          const resetAt = resetHeader ? new Date(Number(resetHeader) * 1000) : null;
+          throw new RateLimitError(
+            `GitHub hourly rate limit reached${resetAt ? `, resets at ${resetAt.toISOString()}` : ""}`,
+            resetAt,
+          );
+        }
+
+        // A secondary rate limit is a burst-protection signal and clears after
+        // a short wait, so it is worth retrying with backoff.
+        const isSecondary = /secondary rate limit/i.test(body) || Boolean(retryAfter);
+        if (isSecondary && attempt < this.maxRetries && this.budget.remaining > 0) {
+          const waitMs = retryAfter ? Number(retryAfter) * 1000 : 2 ** attempt * 2000;
+          await this.sleepImpl(waitMs);
+          continue;
+        }
+
         throw new RateLimitError(
-          `GitHub rate limit reached${resetAt ? `, resets at ${resetAt.toISOString()}` : ""}`,
-          resetAt,
+          `GitHub rejected the request with a rate limit after ${attempt + 1} attempt(s)`,
+          null,
         );
       }
-    }
 
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`GitHub ${response.status} for ${url}: ${body.slice(0, 200)}`);
-    }
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`GitHub ${response.status} for ${url}: ${body.slice(0, 200)}`);
+      }
 
-    return {
-      data: (await response.json()) as T,
-      etag: response.headers.get("etag"),
-      notModified: false,
-      nextUrl: parseNextLink(response.headers.get("link")),
-    };
+      return {
+        data: (await response.json()) as T,
+        etag: response.headers.get("etag"),
+        notModified: false,
+        nextUrl: parseNextLink(response.headers.get("link")),
+      };
+    }
   }
 
   /**
@@ -134,9 +179,13 @@ export class GitHubClient {
       maxPages?: number;
       etag?: string | null;
       shouldStop?: (page: T[]) => boolean;
+      /** Some endpoints (notably Actions) wrap results in an envelope object. */
+      extract?: (data: unknown) => T[];
     } = {},
   ): Promise<{ items: T[]; etag: string | null; notModified: boolean; truncated: boolean }> {
     const maxPages = options.maxPages ?? 1;
+    const extract =
+      options.extract ?? ((data: unknown) => (Array.isArray(data) ? (data as T[]) : []));
     const items: T[] = [];
     let url: string | null = path;
     let firstEtag: string | null = null;
@@ -149,7 +198,7 @@ export class GitHubClient {
         break;
       }
 
-      const response: GitHubResponse<T[]> = await this.request<T[]>(
+      const response: GitHubResponse<unknown> = await this.request<unknown>(
         url,
         pages === 0 ? options.etag : undefined,
       );
@@ -160,7 +209,7 @@ export class GitHubClient {
         }
       }
 
-      const page = Array.isArray(response.data) ? response.data : [];
+      const page = extract(response.data);
       items.push(...page);
       pages += 1;
 

@@ -123,15 +123,13 @@ export async function fetchWorkflowRuns(
   if (options.createdSince) {
     params.set("created", `>=${options.createdSince.toISOString().slice(0, 10)}`);
   }
-  const result = await client.paginate<{ workflow_runs?: GhWorkflowRun[] }>(
-    `/repos/${slug}/actions/runs?${params}`,
-    { maxPages: options.maxPages ?? 2, etag: options.etag },
-  );
-
-  // This endpoint returns an object, not an array, so `paginate` collects the
-  // envelope per page and the runs are flattened here.
-  const runs = result.items.flatMap((envelope) => envelope?.workflow_runs ?? []);
-  return { ...result, items: runs };
+  // This endpoint returns `{ total_count, workflow_runs }` rather than a bare
+  // array, so the runs have to be lifted out of the envelope on each page.
+  return client.paginate<GhWorkflowRun>(`/repos/${slug}/actions/runs?${params}`, {
+    maxPages: options.maxPages ?? 2,
+    etag: options.etag,
+    extract: (data) => (data as { workflow_runs?: GhWorkflowRun[] })?.workflow_runs ?? [],
+  });
 }
 
 /** Opportunistic per-PR enrichment for size metrics; only called when budget allows. */
