@@ -1,19 +1,19 @@
 # Engineering Productivity Dashboard — Render Blueprint
-# Repo: https://cursor.com/codebase/mohamed-elmeseery/dev-pulse
+# GitHub: https://github.com/Meseery2/dev-pulse
+# Origin: https://cursor.com/codebase/mohamed-elmeseery/dev-pulse
 #
-# Before Apply: connect Cursor Origin under Render Account Settings →
-# Git Deployment Credentials (workspace admin), or mirror this repo to GitHub.
-# Free workspaces allow only one free Postgres — delete any spare free DB first.
+# Free workspaces allow only one free Postgres — reuse an existing DB if needed.
+# npm ci must include devDependencies so Tailwind PostCSS can build.
 
 services:
   - type: web
-    name: dev-pulse
+    name: dev-pulse-web
     runtime: node
     plan: free
     region: oregon
     branch: main
     autoDeployTrigger: commit
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npx tsx scripts/bootstrap.ts && npm start
     healthCheckPath: /api/health
     envVars:
@@ -40,12 +40,12 @@ services:
     schedule: "0 */6 * * *"
     buildCommand: npm ci --omit=dev
     startCommand: >-
-      node -e "fetch('https://dev-pulse-710m.onrender.com/api/cron/sync',{method:'POST',headers:{Authorization:'Bearer '+process.env.CRON_SECRET}}).then(async r=>{console.log(await r.text()); if(!r.ok) process.exit(1)})"
+      node -e "fetch('https://dev-pulse-web.onrender.com/api/cron/sync',{method:'POST',headers:{Authorization:'Bearer '+process.env.CRON_SECRET}}).then(async r=>{console.log(await r.text()); if(!r.ok) process.exit(1)})"
     envVars:
       - key: CRON_SECRET
         fromService:
           type: web
-          name: dev-pulse
+          name: dev-pulse-web
           envVarKey: CRON_SECRET
 
 databases:

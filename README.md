@@ -33,12 +33,17 @@ Open [http://localhost:44817](http://localhost:44817).
 
 This repo includes a Blueprint (`render.yaml`) and a production `Dockerfile`.
 
-1. Connect **Cursor Origin** in Render → Account Settings → Git Deployment Credentials
-   (workspace admin), *or* mirror the repo to GitHub and use that URL instead.
-2. Apply the Blueprint:
-   [https://dashboard.render.com/blueprint/new?repo=https://cursor.com/codebase/mohamed-elmeseery/dev-pulse](https://dashboard.render.com/blueprint/new?repo=https://cursor.com/codebase/mohamed-elmeseery/dev-pulse)
-3. Optionally set `GITHUB_TOKEN` for live ingestion. Without it, the boot
+1. Connect the [Render GitHub App](https://github.com/apps/render/installations/new)
+   and grant access to **`Meseery2/dev-pulse`**.
+2. Create a **Web Service** from the GitHub repo (`main`), with:
+   - Build: `npm ci --include=dev && npm run build`
+   - Start: `npx tsx scripts/bootstrap.ts && npm start`
+   - Health check: `/api/health`
+   - Env: `DATABASE_URL` (from Render Postgres), `SESSION_SECRET`, `CRON_SECRET`
+3. Optionally set `GITHUB_TOKEN` for live ingestion. Without it, boot
    bootstrap loads synthetic (seeded) metrics.
+
+Live service: https://dev-pulse-web.onrender.com
 
 Health check: `GET /api/health`. Sync: `POST /api/cron/sync` with
 `Authorization: Bearer $CRON_SECRET`.
