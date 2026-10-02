@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+coverage
+*.md
+docs
+AGENTS.md
+CLAUDE.md
+.cursor
+/tmp

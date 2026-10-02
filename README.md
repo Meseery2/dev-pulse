@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Dev Pulse — Engineering Productivity Dashboard
 
-## Getting Started
+Role-scoped DORA and flow metrics for engineering leads and the CEO office.
+Built as a single Next.js app with Postgres, GitHub connectors, and a
+deterministic seed so the UI is demoable without credentials.
 
-First, run the development server:
+## Quick start (local)
 
 ```bash
+cp .env.example .env.local
+# set DATABASE_URL to a local Postgres instance
+npm ci
+npm run db:bootstrap
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:44817](http://localhost:44817).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Demo accounts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Username   | Password            | Role                         |
+| ---------- | ------------------- | ---------------------------- |
+| `admin`    | `exec-demo-2026`    | Exec — org aggregates only   |
+| `manager1` | `runtime-demo-2026` | Squad lead — Runtime         |
+| `manager2` | `experience-demo-2026` | Squad lead — Experience   |
 
-## Learn More
+## Deploy on Render
 
-To learn more about Next.js, take a look at the following resources:
+This repo includes a Blueprint (`render.yaml`) and a production `Dockerfile`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Connect **Cursor Origin** in Render → Account Settings → Git Deployment Credentials
+   (workspace admin), *or* mirror the repo to GitHub and use that URL instead.
+2. Apply the Blueprint:
+   [https://dashboard.render.com/blueprint/new?repo=https://cursor.com/codebase/mohamed-elmeseery/dev-pulse](https://dashboard.render.com/blueprint/new?repo=https://cursor.com/codebase/mohamed-elmeseery/dev-pulse)
+3. Optionally set `GITHUB_TOKEN` for live ingestion. Without it, the boot
+   bootstrap loads synthetic (seeded) metrics.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Health check: `GET /api/health`. Sync: `POST /api/cron/sync` with
+`Authorization: Bearer $CRON_SECRET`.
 
-## Deploy on Vercel
+## Scripts
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Script                 | Purpose                                      |
+| ---------------------- | -------------------------------------------- |
+| `npm run db:bootstrap` | Schema + accounts + seed-if-empty + snapshots |
+| `npm run db:push`      | Apply schema only                            |
+| `npm run db:seed`      | Force synthetic seed + snapshots             |
+| `npm run data:sync`    | Live GitHub sync                             |
+| `npm run data:refresh` | Re-normalize + rematerialize snapshots       |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Live vs seeded
+
+Public GitHub repos configured in `config/sources.json` are live when
+`GITHUB_TOKEN` is set. The Payments squad and project-management flow metrics
+are always seeded and labeled in the UI.

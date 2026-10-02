@@ -11,6 +11,7 @@
     "test": "vitest run",
     "db:push": "tsx scripts/db-push.ts",
     "db:seed": "tsx scripts/seed.ts",
+    "db:bootstrap": "tsx scripts/bootstrap.ts",
     "data:sync": "tsx scripts/sync.ts",
     "data:refresh": "tsx scripts/refresh.ts",
     "postinstall": "next telemetry disable > /dev/null 2>&1 || true"

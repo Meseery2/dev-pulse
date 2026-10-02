@@ -1,0 +1,56 @@
+# Engineering Productivity Dashboard — Render Blueprint
+# Repo: https://cursor.com/codebase/mohamed-elmeseery/dev-pulse
+#
+# Before Apply: connect Cursor Origin under Render Account Settings →
+# Git Deployment Credentials (workspace admin), or mirror this repo to GitHub.
+# Free workspaces allow only one free Postgres — delete any spare free DB first.
+
+services:
+  - type: web
+    name: dev-pulse
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    autoDeployTrigger: commit
+    buildCommand: npm ci && npm run build
+    startCommand: npx tsx scripts/bootstrap.ts && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dev-pulse-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
+      - key: IDENTITY_SALT
+        generateValue: true
+      - key: GITHUB_TOKEN
+        sync: false
+
+  - type: cron
+    name: dev-pulse-sync
+    runtime: node
+    plan: free
+    region: oregon
+    schedule: "0 */6 * * *"
+    buildCommand: npm ci --omit=dev
+    startCommand: >-
+      node -e "fetch('https://dev-pulse.onrender.com/api/cron/sync',{method:'POST',headers:{Authorization:'Bearer '+process.env.CRON_SECRET}}).then(async r=>{console.log(await r.text()); if(!r.ok) process.exit(1)})"
+    envVars:
+      - key: CRON_SECRET
+        fromService:
+          type: web
+          name: dev-pulse
+          envVarKey: CRON_SECRET
+
+databases:
+  - name: dev-pulse-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: "16"
+    ipAllowList: []
