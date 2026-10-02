@@ -1,6 +1,7 @@
 import { LogOutIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { logout } from "@/app/logout/actions";
 
 interface AppHeaderProps {
   title: string;
@@ -39,7 +40,7 @@ export function AppHeader({ title, subtitle, viewer, scopeLabel }: AppHeaderProp
               {viewer.role === "exec" ? "Leadership access" : "Squad lead access"}
             </span>
           </div>
-          <form action="/logout" method="post">
+          <form action={logout}>
             <Button type="submit" variant="outline" size="sm" className="font-bold">
               <LogOutIcon data-icon="inline-start" />
               Sign out
