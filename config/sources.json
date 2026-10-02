@@ -1,0 +1,89 @@
+{
+  "$comment": "Squad and source-system configuration. Repos are mapped to squads here; CODEOWNERS teams provide a secondary attribution path for repos shared by several squads. Edit this file to point the dashboard at a different org — no code changes required.",
+  "org": {
+    "name": "Northwind Engineering",
+    "kAnonymityFloor": 5
+  },
+  "squads": [
+    {
+      "id": "runtime",
+      "name": "Runtime",
+      "description": "Server runtime and framework core.",
+      "repos": ["honojs/hono", "withastro/starlight"],
+      "codeownersTeams": ["@honojs/core", "@withastro/maintainers"]
+    },
+    {
+      "id": "experience",
+      "name": "Experience",
+      "description": "Client libraries and data layer.",
+      "repos": ["pmndrs/zustand", "drizzle-team/drizzle-orm"],
+      "codeownersTeams": ["@pmndrs/zustand", "@drizzle-team/core"]
+    },
+    {
+      "id": "payments",
+      "name": "Payments",
+      "description": "Billing and payments services. Seeded squad — no public repository equivalent exists, so this squad demonstrates the project-management ingestion path.",
+      "repos": ["northwind/payments-api", "northwind/billing-worker"],
+      "codeownersTeams": []
+    }
+  ],
+  "repos": [
+    {
+      "slug": "honojs/hono",
+      "defaultBranch": "main",
+      "provenance": "live",
+      "deploySignal": {
+        "kind": "workflow",
+        "workflowNames": ["cr", "release"],
+        "branches": ["main"]
+      }
+    },
+    {
+      "slug": "withastro/starlight",
+      "defaultBranch": "main",
+      "provenance": "live",
+      "deploySignal": {
+        "kind": "workflow",
+        "workflowNames": ["Release"],
+        "branches": ["main"]
+      }
+    },
+    {
+      "slug": "pmndrs/zustand",
+      "defaultBranch": "main",
+      "provenance": "live",
+      "deploySignal": {
+        "kind": "workflow",
+        "workflowNames": ["Preview Release", "Build documentation and deploy to GitHub Pages"],
+        "branches": ["main"]
+      }
+    },
+    {
+      "slug": "drizzle-team/drizzle-orm",
+      "defaultBranch": "main",
+      "provenance": "live",
+      "deploySignal": {
+        "kind": "workflow",
+        "workflowNames": ["Release Router"],
+        "branches": ["main"]
+      }
+    },
+    {
+      "slug": "northwind/payments-api",
+      "defaultBranch": "main",
+      "provenance": "seeded",
+      "deploySignal": { "kind": "workflow", "workflowNames": ["deploy-production"], "branches": ["main"] }
+    },
+    {
+      "slug": "northwind/billing-worker",
+      "defaultBranch": "main",
+      "provenance": "seeded",
+      "deploySignal": { "kind": "workflow", "workflowNames": ["deploy-production"], "branches": ["main"] }
+    }
+  ],
+  "accounts": [
+    { "username": "admin", "role": "exec", "displayName": "Office of the CEO", "squadId": null },
+    { "username": "manager1", "role": "squad_lead", "displayName": "Runtime Squad Lead", "squadId": "runtime" },
+    { "username": "manager2", "role": "squad_lead", "displayName": "Experience Squad Lead", "squadId": "experience" }
+  ]
+}

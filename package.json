@@ -1,0 +1,49 @@
+{
+  "name": "engineering-productivity-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 44817",
+    "build": "next build",
+    "start": "next start -p ${PORT:-44817} -H 0.0.0.0",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:push": "tsx scripts/db-push.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "data:sync": "tsx scripts/sync.ts",
+    "data:refresh": "tsx scripts/refresh.ts",
+    "postinstall": "next telemetry disable > /dev/null 2>&1 || true"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "drizzle-orm": "^0.45.3",
+    "jose": "^6.2.12",
+    "lucide-react": "^1.50.0",
+    "next": "16.3.8",
+    "pg": "^8.23.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "^3.10.1",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^24.19.1",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "dotenv": "^18.0.5",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.8",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.0.3"
+  }
+}
