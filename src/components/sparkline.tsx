@@ -20,7 +20,7 @@ export function Sparkline({ points, unit, positive }: SparklineProps) {
     );
   }
 
-  const stroke = positive ? "var(--chart-2)" : "var(--chart-5)";
+  const stroke = positive ? "var(--chart-1)" : "var(--chart-5)";
   const gradientId = `spark-${unit}-${positive ? "pos" : "neg"}`;
 
   return (

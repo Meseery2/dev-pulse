@@ -21,9 +21,9 @@ export function MetricTile({ card }: { card: MetricCard }) {
   const hasData = card.value !== null;
 
   return (
-    <Card className="gap-4">
+    <Card className="gap-4 border-white/10 bg-white/[0.05] backdrop-blur-sm">
       <CardHeader>
-        <CardDescription className="flex items-center gap-1.5">
+        <CardDescription className="flex items-center gap-1.5 font-semibold text-muted-foreground">
           {card.label}
           <Tooltip>
             <TooltipTrigger
@@ -33,15 +33,15 @@ export function MetricTile({ card }: { card: MetricCard }) {
               <InfoIcon className="size-3.5" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              <p className="font-medium">How this is calculated</p>
-              <p className="mt-1">{card.derivation}</p>
-              <p className="mt-2 font-medium">Known limitation</p>
-              <p className="mt-1">{card.caveat}</p>
+              <p className="font-bold">How this is calculated</p>
+              <p className="mt-1 font-medium">{card.derivation}</p>
+              <p className="mt-2 font-bold">Known limitation</p>
+              <p className="mt-1 font-medium">{card.caveat}</p>
             </TooltipContent>
           </Tooltip>
         </CardDescription>
 
-        <CardTitle className="text-2xl tabular-nums">
+        <CardTitle className="text-3xl font-extrabold tracking-tight tabular-nums">
           {formatMetric(card.value, card.unit)}
         </CardTitle>
 

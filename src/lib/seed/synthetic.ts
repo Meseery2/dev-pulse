@@ -57,7 +57,7 @@ export async function generateSyntheticData(now = new Date()): Promise<SeedSumma
 
   // Synthetic contributors are hashed exactly like real ones, so the seeded
   // path exercises the same pseudonymisation the live path uses.
-  const logins = Array.from({ length: 11 }, (_, i) => `northwind-engineer-${i + 1}`);
+  const logins = Array.from({ length: 11 }, (_, i) => `mal-engineer-${i + 1}`);
   const contributorRows = logins.map((login) => ({
     id: stableId("contributor", hashIdentity(login)),
     identityHash: hashIdentity(login),

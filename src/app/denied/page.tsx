@@ -13,17 +13,17 @@ export default async function DeniedPage() {
   const session = await getSession();
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-muted/40 p-4">
-      <Empty className="max-w-md">
+    <main className="flex min-h-dvh items-center justify-center p-4">
+      <Empty className="max-w-md border-white/10 bg-white/[0.05]">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <ShieldXIcon />
           </EmptyMedia>
-          <EmptyTitle>That data is outside your scope</EmptyTitle>
-          <EmptyDescription>
+          <EmptyTitle className="font-extrabold">That data is outside your scope</EmptyTitle>
+          <EmptyDescription className="font-medium">
             {session
               ? session.role === "exec"
-                ? "Executive accounts see organisation-level roll-ups. Squad detail is restricted to that squad's lead."
+                ? "MAL leadership accounts see organisation-level roll-ups. Squad detail is restricted to that squad's lead."
                 : "Squad leads can only open their own squad. The attempt has been recorded in the access log."
               : "Sign in to continue."}
           </EmptyDescription>

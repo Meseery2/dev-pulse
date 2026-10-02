@@ -1,8 +1,8 @@
-# Dev Pulse — Engineering Productivity Dashboard
+# Dev Pulse — MAL Engineering Productivity Dashboard
 
-Role-scoped DORA and flow metrics for engineering leads and the CEO office.
+Role-scoped DORA and flow metrics for **MAL** engineering leads and leadership.
 Single Next.js app + Postgres, with live GitHub ingestion and a deterministic
-seed so the UI is always demoable.
+seed so the UI is always demoable. Visual theme aligned with [mal.ai](https://www.mal.ai).
 
 ## Live dashboard
 
@@ -18,7 +18,7 @@ seed so the UI is always demoable.
 
 | Username | Password | Lands on | Role |
 | --- | --- | --- | --- |
-| `admin` | `exec-demo-2026` | `/exec` | Exec — org aggregates only (no person-level rows) |
+| `admin` | `exec-demo-2026` | `/exec` | MAL Leadership — org aggregates only (no person-level rows) |
 | `manager1` | `runtime-demo-2026` | `/squad/runtime` | Squad lead — Runtime |
 | `manager2` | `experience-demo-2026` | `/squad/experience` | Squad lead — Experience |
 
@@ -26,7 +26,7 @@ Access control is enforced server-side (`requireRole`), not by URL alone.
 
 ### What each view shows
 
-- **`/exec`** — Org-level DORA + SPACE/flow roll-ups, squad comparison with a
+- **`/exec`** — MAL org-level DORA + SPACE/flow roll-ups, squad comparison with a
   k-anonymity floor, investment mix. Never serializes person identifiers.
 - **`/squad/[id]`** — Squad DORA tiles, per-repo breakdown, stalled PR review
   queue, WIP. Person-level detail only where it unblocks flow.
@@ -44,7 +44,7 @@ Configured in [`config/sources.json`](config/sources.json).
 | --- | --- | --- |
 | `honojs/hono`, `withastro/starlight` | **Live** (Runtime squad) | GitHub REST + Actions when `GITHUB_TOKEN` is set |
 | `pmndrs/zustand`, `TanStack/query` | **Live** (Experience squad) | Same |
-| `northwind/payments-*` | **Seeded** (Payments squad) | Synthetic; no public repo equivalent |
+| `mal/payments-*` | **Seeded** (Payments squad) | Synthetic; no public repo equivalent |
 | Flow efficiency / unplanned work | **Seeded** | Project-management path; labeled in the UI |
 
 Seeded rows carry `is_seeded` and surface a **Seeded** badge in the UI.

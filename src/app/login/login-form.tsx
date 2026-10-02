@@ -46,7 +46,7 @@ export function LoginForm() {
           />
         </Field>
 
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending} className="h-11 font-bold">
           {pending ? <Spinner data-icon="inline-start" /> : <LogInIcon data-icon="inline-start" />}
           Sign in
         </Button>

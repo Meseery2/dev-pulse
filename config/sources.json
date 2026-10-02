@@ -1,7 +1,7 @@
 {
-  "$comment": "Squad and source-system configuration. Repos are mapped to squads here; CODEOWNERS teams provide a secondary attribution path for repos shared by several squads. Edit this file to point the dashboard at a different org — no code changes required.",
+  "$comment": "Squad and source-system configuration for MAL. Repos are mapped to squads here; CODEOWNERS teams provide a secondary attribution path for repos shared by several squads. Edit this file to point the dashboard at a different org — no code changes required.",
   "org": {
-    "name": "Northwind Engineering",
+    "name": "MAL",
     "kAnonymityFloor": 5
   },
   "squads": [
@@ -22,8 +22,8 @@
     {
       "id": "payments",
       "name": "Payments",
-      "description": "Billing and payments services. Seeded squad — no public repository equivalent exists, so this squad demonstrates the project-management ingestion path.",
-      "repos": ["northwind/payments-api", "northwind/billing-worker"],
+      "description": "Billing and payments services. Seeded squad — demonstrates the project-management ingestion path for MAL product surfaces without a public repository equivalent.",
+      "repos": ["mal/payments-api", "mal/billing-worker"],
       "codeownersTeams": []
     }
   ],
@@ -69,20 +69,20 @@
       }
     },
     {
-      "slug": "northwind/payments-api",
+      "slug": "mal/payments-api",
       "defaultBranch": "main",
       "provenance": "seeded",
       "deploySignal": { "kind": "workflow", "workflowNames": ["deploy-production"], "branches": ["main"] }
     },
     {
-      "slug": "northwind/billing-worker",
+      "slug": "mal/billing-worker",
       "defaultBranch": "main",
       "provenance": "seeded",
       "deploySignal": { "kind": "workflow", "workflowNames": ["deploy-production"], "branches": ["main"] }
     }
   ],
   "accounts": [
-    { "username": "admin", "role": "exec", "displayName": "Office of the CEO", "squadId": null },
+    { "username": "admin", "role": "exec", "displayName": "MAL Leadership", "squadId": null },
     { "username": "manager1", "role": "squad_lead", "displayName": "Runtime Squad Lead", "squadId": "runtime" },
     { "username": "manager2", "role": "squad_lead", "displayName": "Experience Squad Lead", "squadId": "experience" }
   ]

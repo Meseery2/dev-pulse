@@ -52,21 +52,21 @@ export default async function ExecPage() {
   const unplanned = view.cards.find((card) => card.key === "unplanned_work_ratio");
 
   return (
-    <div className="min-h-dvh bg-muted/30">
+    <div className="min-h-dvh">
       <AppHeader
         title={`${view.orgName} delivery overview`}
-        subtitle="Organisation-level delivery health for the office of the CEO."
+        subtitle="Organisation-level delivery health for MAL leadership."
         viewer={view.viewer}
         scopeLabel="Organisation"
       />
 
-      <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6">
+      <main className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-8 sm:px-6">
         <FreshnessBar freshness={view.freshness} />
 
-        <section className="flex flex-col gap-3">
+        <section className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <h2 className="text-base font-semibold">Delivery performance</h2>
-            <p className="text-sm text-muted-foreground">
+            <h2 className="text-lg font-extrabold tracking-tight">Delivery performance</h2>
+            <p className="text-sm font-medium text-muted-foreground">
               The four DORA measures, compared against industry performance bands. Each tile
               explains how it was derived and what it cannot see.
             </p>
