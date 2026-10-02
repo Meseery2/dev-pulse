@@ -37,37 +37,78 @@ from a system of record.
 
 ### Data flow
 
-```
-GitHub REST          GitHub Actions         Linear / Jira (later)
-(commits, PRs,   →   (workflow runs)   →    (work items)
- reviews)                 │                      │
-        └────────────┬────┴──────────────────────┘
-                     ▼
-              Connectors (IO only)
-                     ▼
-         raw_events (append-only, idempotent)
-                     ▼
-              Normalizer (pure)
-                     ▼
-     Canonical: commits, PRs, deployments,
-     deployment_commits, incidents, work_items
-                     ▼
-           Metric engine (pure, windowed)
-                     ▼
-         metric_snapshots (definition_version, is_seeded)
-                     │
-          ┌──────────┴──────────┐
-          ▼                     ▼
-   /squad/[id]              /exec
-   (squad_lead)             (exec)
-   detail + PR queue        aggregates only
+```mermaid
+flowchart TB
+  subgraph Sources
+    GH["GitHub REST<br/>commits, PRs, reviews"]
+    GA["GitHub Actions<br/>workflow runs"]
+    PM["Linear / Jira later<br/>work items"]
+  end
+
+  subgraph Ingest
+    C["Connectors<br/>IO only"]
+    R["raw_events<br/>append-only, idempotent"]
+    N["Normalizer<br/>pure"]
+  end
+
+  subgraph Store["Canonical store"]
+    T["commits · PRs · deployments<br/>deployment_commits · incidents · work_items"]
+  end
+
+  subgraph Compute
+    M["Metric engine<br/>pure, windowed"]
+    S["metric_snapshots<br/>definition_version · is_seeded"]
+  end
+
+  subgraph Views["Role views + authz"]
+    SQ["/squad/id<br/>squad_lead<br/>detail + PR queue"]
+    EX["/exec<br/>exec<br/>aggregates only"]
+  end
+
+  GH --> C
+  GA --> C
+  PM --> C
+  C --> R --> N --> T --> M --> S
+  S --> SQ
+  S --> EX
+
+  CFG["Config: squads ↔ repos ↔ deploy signals"] -.-> C
+  CFG -.-> M
+  AUTH["Guards: requireExec / requireSquadAccess<br/>k-anonymity · audit · identity hash"] -.-> SQ
+  AUTH -.-> EX
 ```
 
 Sync is incremental (watermarks, ETags, request budget). A definition change
-recomputes from `raw_events` without re-crawling GitHub. Org topology (squads to
-repos to deploy signals) lives in config, not code.
+recomputes from `raw_events` without re-crawling GitHub. Org topology lives in
+config, not code.
 
 ### Who sees what, and why
+
+```mermaid
+flowchart LR
+  subgraph SquadLead["Squad lead"]
+    SL1["Own squad DORA / SPACE"]
+    SL2["Per-repo breakdown"]
+    SL3["Stalled open PRs by PR<br/>no person ranking"]
+    SL4["WIP"]
+  end
+
+  subgraph Exec["Leadership exec"]
+    EX1["Org DORA"]
+    EX2["Squad comparison<br/>k-anonymity ≥ 5"]
+    EX3["Investment mix"]
+  end
+
+  subgraph Hidden["Never exposed upward"]
+    H1["Person IDs"]
+    H2["Org-wide person lists"]
+    H3["Other squads' detail"]
+    H4["Repo lists as team proxies"]
+  end
+
+  SquadLead -.->|not rolled up| Hidden
+  Exec -.->|never reads| Hidden
+```
 
 | Audience | Sees | Does not see |
 | --- | --- | --- |
@@ -96,6 +137,40 @@ Demo credentials exist for grading. Production would use Mal SSO (OIDC) with the
 same role claims; the guard surface stays the same.
 
 ### Extending beyond engineering without a rebuild
+
+```mermaid
+flowchart TB
+  subgraph Shared["Unchanged platform shell"]
+    RAW["raw_events"]
+    SNAP["metric_snapshots"]
+    GUARD["Authz + view shells"]
+  end
+
+  subgraph Eng["Engineering today"]
+    EC["Connector: GitHub + Actions"]
+    ECanon["Canonical: commits, deploys, PRs"]
+    EM["Metrics: DORA / SPACE"]
+    ECfg["Config: squads ↔ repos"]
+  end
+
+  subgraph Next["Risk or Marketing tomorrow"]
+    NC["Connector: cases / campaigns"]
+    NCanon["Canonical: cases, releases, campaigns"]
+    NM["Domain metric definitions"]
+    NCfg["Config: teams ↔ surfaces"]
+  end
+
+  EC --> RAW
+  ECanon --> SNAP
+  EM --> SNAP
+  NC --> RAW
+  NCanon --> SNAP
+  NM --> SNAP
+  GUARD --> Eng
+  GUARD --> Next
+  ECfg -.-> EC
+  NCfg -.-> NC
+```
 
 | Layer | Engineering today | Risk / Marketing tomorrow |
 | --- | --- | --- |
